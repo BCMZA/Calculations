@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SQLite Node App</title>
+    <style>
+      .pretty-json {
+        white-space: pre-wrap;
+        /* Preserve whitespace */
+        background-color: #f5f5f5;
+        padding: 10px;
+        border-radius: 5px;
+        border: 1px solid #ccc;
+        font-family: monospace;
+        margin-top: 20px;
+      }
+
+      .cell {
+        width: 150px;
+        margin: 1px;
+        display: flex;
+        justify-content: space-between;
+      }
+
+      .input_val {
+        width: 50px;
+        border-radius: 4px;
+        border-color: #ccc;
+      }
+
+      .d-flex {
+        display: flex;
+      }
+
+      .mb-15 {
+        margin-bottom: 15px;
+      }
+
+      .my-15 {
+        margin: 15px 0 15px 0;
+      }
+
+      .mx-15 {
+        margin: 0 15px 0 15px;
+      }
+
+      table {
+        border-collapse: collapse;
+        width: 100%;
+      }
+
+      table th {
+        background-color: #f2f2f2;
+        padding: 8px;
+        font-size: 11px;
+      }
+    </style>
+  </head>
+
+  <body>
+    <h1>Age Relevance Calculations</h1>
+    <form id="numberForm">
+      <div class="d-flex my-15">
+        <div class="mx-15">
+          <% for (let i = 0; i < months.length; i++) { %>
+          <div class="cell">
+            <input type="checkbox" name="monthcombo_<%= i+1%>" id="monthcombo_<%= i+1%>" />
+            <div>Month <%= i+1 %>:</div>
+            <input class="input_val" type="number" name="month_<%= i+1%>" id="month_<%= i+1%>" value="<%= months[i] %>" />
+          </div>
+          <% } %>
+        </div>
+        <div class="mx-15">
+          <% for (let i = 0; i < suppliers.length; i++) { %>
+          <div class="cell">
+            <div>Supplier <%= i+1 %>:</div>
+            <input class="input_val" type="number" name="supplier_<%= i+1 %>" id="supplier_<%= i+1 %>" value="<%= suppliers[i] %>" />
+          </div>
+          <% } %>
+        </div>
+        <div class="mx-15">
+          <% for (let i = 0; i < multipliers.length; i++) { %>
+          <div class="cell">
+            <div>Multiplier <%= i+1 %>:</div>
+            <input class="input_val" type="number" name="multiplier_<%= i+1 %>" id="multiplier_<%= i+1 %>" value="<%= multipliers[i] %>" />
+          </div>
+          <% } %>
+        </div>
+        <div class="mx-15">
+          <div class="cell">
+            <div>DivideBy:</div>
+            <input class="input_val" type="number" name="divideBy_1" id="divideBy_1" value="<%= divideBy %>" />
+          </div>
+        </div>
+      </div>
+      <button type="submit">Calculate</button>
+      <button id="refetch" type="button">Refetch</button>
+      <button id="save" type="submit">Save</button>
+    </form>
+
+    <div class="my-15">
+      <table id="combinationsTable" border="1">
+        <tr>
+          <!-- Adjusting table headers for 12 months -->
+          <th>Month 1</th>
+          <th>Month 2</th>
+          <th>Month 3</th>
+          <th>Month 4</th>
+          <th>Month 5</th>
+          <th>Month 6</th>
+          <th>Month 7</th>
+          <th>Month 8</th>
+          <th>Month 9</th>
+          <th>Month 10</th>
+          <th>Month 11</th>
+          <th>Month 12</th>
+          <th>Relevance</th>
+        </tr>
+        <!-- Combinations will be inserted here -->
+      </table>
+    </div>
+
+    <script>
+      const headers = { "Content-Type": "application/json" };
+      const strify = (obj) => JSON.stringify(obj);
+
+      const post = async (url, body, method = "POST") => await fetch(url, { method, headers, body: strify(body) });
+
+      const put = async (url, body, method = "PUT") => await fetch(url, { method, headers, body: strify(body) });
+
+      const get = async (url, method = "GET") => await fetch(url, { method, headers });
+
+      const deleteItem = async (url, method = "DELETE") => fetch(url, { method, headers });
+
+      /**
+       * @typedef {Object} Record
+       * @property {number} month
+       * @property {number} supplier
+       * @property {number} multiplier
+       */
+
+      /**
+       * @typedef {Object.<string, Record>} CalculationRecord
+       */
+
+      /**
+       * handles the calculation of the relevance
+       * @param {Array.<{field: string, id: string, value: string}>} payload
+       * @returns {Promise<void>}
+       */
+      const handleCalculation = async (payload) => {
+        /**
+         * @type {CalculationRecord}
+         */
+        let d = {};
+        payload.forEach(
+          ({ id }) =>
+            (d[id] = {
+              month: 0,
+              supplier: 0,
+              multiplier: 0,
+              monthcombo: 0,
+            })
+        );
+        payload.forEach(({ field, id, value }) => (d[id][field] = parseFloat(value)));
+
+        const table = document.getElementById("combinationsTable");
+
+        const ageMonthCombo = Object.values(d).map(({ monthcombo }) => monthcombo);
+        const monthValues = Object.values(d).map(({ month }) => month);
+        const multiplierValues = Object.values(d).map(({ multiplier }) => multiplier);
+        const supplierValues = Object.values(d).map(({ supplier }) => supplier);
+        const divideBy = parseFloat(document.getElementById("divideBy_1").value);
+
+        let row = table.insertRow(-1);
+        let relevance = 0;
+        let adjD = divideBy;
+
+        let supplierCount = 0;
+        let supplierValue = 0;
+        for (let i = 0; i < 12; i++) {
+          let isAge = ageMonthCombo[i] == 1;
+          if (isAge) {
+            supplierCount++;
+            supplierValue += supplierValues[i];
+          }
+        }
+
+        const averageSupplier = supplierCount <= 0 ? 0 : supplierValue / supplierCount;
+
+        for (let i = 0; i < 12; i++) {
+          debugger;
+          let cell = row.insertCell(-1);
+          const isAge = ageMonthCombo[i] == 1;
+
+          const diff = (supplierValues[i] - averageSupplier) / 100;
+          const month = monthValues[i];
+          const multiplier = multiplierValues[i];
+
+          if (!isAge) {
+            cell.innerHTML = 0;
+            cell.style.backgroundColor = "white";
+          } else {
+            const adjF = 1 + diff * multiplier;
+            adjD *= adjF;
+            const calc = Math.round(month * (1 + diff * multiplier) * 100) / 100;
+            const rDiff = Math.round(diff * 10000) / 100;
+            relevance += calc;
+
+            cell.innerHTML = `m:${month}<br>d:${rDiff}<br>x:${multiplier}<br>c:${calc}`;
+            cell.style.backgroundColor = "#90ee90";
+          }
+        }
+        row.insertCell(-1).innerHTML = Math.round((relevance / adjD) * 10000) / 100 + "%";
+      };
+
+      document.getElementById("numberForm").addEventListener("submit", (event) => {
+        event.preventDefault();
+        let formData = new FormData(event.target).entries();
+        let payload = [];
+        formData.forEach(([key, value]) => {
+          const [field, id] = key.split("_");
+          if (field === "monthcombo") {
+            value = document.getElementById(`monthcombo_${id}`).checked ? 1 : 0;
+          }
+          payload.push({ field, id, value });
+        });
+
+        handleCalculation(payload);
+      });
+
+      document.getElementById("refetch").addEventListener("click", () => window.location.reload());
+
+      document.getElementById("save").addEventListener("click", (event) => {
+        event.preventDefault();
+        let formData = new FormData(document.getElementById("numberForm")).entries();
+        let payload = [];
+        formData.forEach(([key, value]) => {
+          const [field, id] = key.split("_");
+          payload.push({ field, id, value });
+        });
+
+        try {
+          put("/api/save", payload);
+        } catch (err) {
+          console.error(err);
+        }
+      });
+    </script>
+  </body>
+</html>
